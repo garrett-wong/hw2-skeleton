@@ -115,8 +115,7 @@ def getAssignments(medioids, active_sites, distD):
         assignments[closestMedioidI(site, medioids, distD)].add(site)
     return assignments
 
-MEANS = 3
-def cluster_by_partitioning(active_sites, distD):
+def cluster_by_partitioning(active_sites, distD, k):
     """
     Cluster a given set of ActiveSite instances using PAM
 
@@ -134,18 +133,18 @@ def cluster_by_partitioning(active_sites, distD):
             ActiveSite instances)
     """
     # pick initial medioids
-    medioids = np.random.choice(active_sites, MEANS, replace=False)
-    sys.stderr.write("initial cost %s.\n" % \
-        totalCost(medioids, getAssignments(medioids, active_sites, distD), distD))
+    medioids = np.random.choice(active_sites, k, replace=False)
+    #sys.stderr.write("initial cost %s.\n" % \
+    #    totalCost(medioids, getAssignments(medioids, active_sites, distD), distD))
     # loop, finding new medioids and reassigning
-    loopNum = 0
+    # loopNum = 0
     changes = float("inf")
     while changes > 0:
         # in each iteration, loop through the medioids. Stop when we
         # make no changes.
         changes = 0
-        loopNum += 1
-        sys.stderr.write("loop %s... " % loopNum)
+        # loopNum += 1
+        # sys.stderr.write("loop %s... " % loopNum)
         for i, medioid in enumerate(medioids):
             # For each medioid, try swapping with every non-medioid site
             # and see if the cost decreases. We keep track of the best
@@ -179,10 +178,10 @@ def cluster_by_partitioning(active_sites, distD):
                 changes += 1
                 medioids = bestSwap[1]
         # done iterating through every medioid this round...
-        sys.stderr.write("%s swaps made. current cost %s.\n" % (changes, bestSwap[0]))
+        # sys.stderr.write("%s swaps made. current cost %s.\n" % (changes, bestSwap[0]))
     # done with our while loop. We went through a round of trying swaps
     # and didn't make any changes, so we're done
-    sys.stderr.write("done.\n")
+    # sys.stderr.write("done.\n")
     return [list(x) for x in getAssignments(medioids, active_sites, distD)]
 
 linkageFunction = max
@@ -212,11 +211,9 @@ def cluster_hierarchically(active_sites, staticDistD):
     iterNum = 0
     while len(clusters) != 1:
         iterNum += 1
-        sys.stderr.write("step %s...\n" % iterNum)
         # find closest pair of clusters; they'll form the new cluster. It
         # will have the same name as cluster_a.
         cluster_a, cluster_b = min(distD, key=distD.get)
-        print (cluster_a, cluster_b)
         clusters.remove(cluster_a)
         clusters.remove(cluster_b)
         distD.pop(frozenset([cluster_a, cluster_b]))
@@ -233,3 +230,27 @@ def cluster_hierarchically(active_sites, staticDistD):
         clusters.add(cluster_a)
         hierarchy.append([list(x) for x in clusterD.values()])
     return hierarchy
+
+def labelClustering(clustering, active_sites):
+    labels = []
+    for site in active_sites:
+        for i in range(len(clustering)):
+            if site in clustering[i]:
+                labels.append(i)
+    assert len(labels) == len(active_sites)
+    return labels
+
+def compareClusterings(clusters_a, clusters_b):
+    # really simple idea here: sum the max size of the union of each
+    # cluster in c1 with any cluster in c2.
+    # first, make 'em sets so we can do set unions faster.
+    clusters_a = [set(x) for x in clusters_a]
+    clusters_b = [set(x) for x in clusters_b]
+    count = 0
+    for a in clusters_a:
+        count += max([len(a & b) for b in clusters_b])
+    return count
+
+
+
+
