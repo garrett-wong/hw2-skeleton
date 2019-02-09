@@ -1,5 +1,6 @@
 from .utils import Atom, Residue, ActiveSite
 import numpy as np
+import sys
 
 def get_backbone_coords(residue):
     """just a getter for a tuple of backbone coordinates"""
@@ -90,7 +91,7 @@ def closestMedioidI(active_site, medioids, distD):
             closest = (thisDist, i)
     return closest[1]
 
-def totalCost(medioids, assignments):
+def totalCost(medioids, assignments, distD):
     """
     gets the cost of assigning a list of lists of ActiveSites(assignments)
     to a corresponding list of medioids.
@@ -115,7 +116,7 @@ def getAssignments(medioids, active_sites, distD):
     return assignments
 
 MEANS = 3
-def cluster_by_partitioning(active_sites):
+def cluster_by_partitioning(active_sites, distD):
     """
     Cluster a given set of ActiveSite instances using PAM
 
@@ -132,13 +133,10 @@ def cluster_by_partitioning(active_sites):
             (this is really a list of clusters, each of which is list of
             ActiveSite instances)
     """
-    # calculate entire distance matrix once
-    sys.stderr.write("calculating distances...\n")
-    distD = calc_distance_matrix(active_sites)
     # pick initial medioids
     medioids = np.random.choice(active_sites, MEANS, replace=False)
-    sys.stderr.write("initial cost %s." % \
-        totalCost(medioids, getAssignments(medioids, active_sites, distD)))
+    sys.stderr.write("initial cost %s.\n" % \
+        totalCost(medioids, getAssignments(medioids, active_sites, distD), distD))
     # loop, finding new medioids and reassigning
     loopNum = 0
     changes = float("inf")
@@ -157,7 +155,7 @@ def cluster_by_partitioning(active_sites):
             # remember that we're modifying the list of medioids as we
             # iterate.
             assignments = getAssignments(medioids, active_sites, distD)
-            bestSwap = (totalCost(medioids, assignments), medioids)
+            bestSwap = (totalCost(medioids, assignments, distD), medioids)
             # loop through non-medioid sites
             for test_site in active_sites:
                 if test_site not in medioids:
@@ -167,7 +165,7 @@ def cluster_by_partitioning(active_sites):
                     test_medioids[i] = test_site
                     test_assignments = getAssignments(test_medioids, active_sites, distD)
                     # then cost it
-                    test_cost = totalCost(test_medioids, test_assignments)
+                    test_cost = totalCost(test_medioids, test_assignments, distD)
                     # and see if it's better.
                     if test_cost < bestSwap[0]:
                         bestSwap = (test_cost, test_medioids)
@@ -185,23 +183,21 @@ def cluster_by_partitioning(active_sites):
     # done with our while loop. We went through a round of trying swaps
     # and didn't make any changes, so we're done
     sys.stderr.write("done.\n")
-    return getAssignments(medioids, active_sites, distD)
+    return [list(x) for x in getAssignments(medioids, active_sites, distD)]
 
 linkageFunction = max
-STOP_K = 3
-def cluster_hierarchically(active_sites):
+def cluster_hierarchically(active_sites, staticDistD):
     """
     Cluster the given set of ActiveSite instances using a hierarchical algorithm.                                                                  #
 
     Input: a list of ActiveSite instances
-    Output: a single clustering (a slice through the hierarchical clustering) at
-    width STOP_K.
+    Output: a clustering of ActiveSite instances
+            (this is really a list of clusters, each of which is list of
+            ActiveSite instances)
     """
-    # Fill in your code here!
-    # get distances
-    sys.stderr.write("calculating distances...\n")
-    distD = calc_distance_matrix(active_sites)
     # I want to weed out the self-distances so I can take a nice min.
+    hierarchy = []
+    distD = staticDistD.copy()
     for site in active_sites: del distD[frozenset([site])]
     # setD gives the cluster memebership for each site.
     clusters = set(active_sites)
@@ -212,8 +208,9 @@ def cluster_hierarchically(active_sites):
     for site in active_sites:
         clusterD[site] = [site]
     # we're going to iterate until we have as many clusters as STOP_K.
+    hierarchy.append([list(x) for x in clusterD.values()])
     iterNum = 0
-    while len(clusters) > STOP_K:
+    while len(clusters) != 1:
         iterNum += 1
         sys.stderr.write("step %s...\n" % iterNum)
         # find closest pair of clusters; they'll form the new cluster. It
@@ -234,4 +231,5 @@ def cluster_hierarchically(active_sites):
             dist_new = linkageFunction(dist_a, dist_b)
             distD[frozenset([cluster_a, otherCluster])] = dist_new
         clusters.add(cluster_a)
-    return clusterD
+        hierarchy.append([list(x) for x in clusterD.values()])
+    return hierarchy
